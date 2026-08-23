@@ -39,14 +39,13 @@ func runDemo() {
 	fmt.Println("\n[ t = 0s ] Creating production files...")
 
 	fs.WriteFile("app/server.go", []byte("package app"))
-	fs.WriteFile("assets/logo.svg", []byte("<svg>ChronoFS</svg>"))
-	fs.WriteFile("config/prod.env", []byte("ENV=production"))
+    fs.WriteFile("assets/logo.svg", []byte("<svg>ChronoFS</svg>"))
+    fs.WriteFile("config/prod.env", []byte("ENV=production"))
 
-	printFiles(fs)
+  beforeDelete := time.Now()
 
-	time.Sleep(800 * time.Millisecond)
-	beforeDelete := time.Now()
-
+      printFiles(fs)
+    time.Sleep(800 * time.Millisecond)
 	fmt.Println("\n[ t = +0.8s ] $ rm -rf *")
 	for _, path := range []string{
 		"app/server.go",
