@@ -3,6 +3,7 @@ package fs
 import (
 	"sort"
 	"sync"
+	"time"
 
 	chronofsengine "github.com/mujib77/chronofs/internal/engine"
 	"github.com/winfsp/cgofuse/fuse"
@@ -12,6 +13,7 @@ type FileSystem struct {
 	fuse.FileSystemBase
 	mu     sync.RWMutex
 	engine *chronofsengine.Engine
+	ready  chan struct{}
 }
 
 func New() *FileSystem {
@@ -22,8 +24,13 @@ func New() *FileSystem {
 	engine.WriteFile("/demo.go", []byte("package main\n\nfunc main() {\n\tprintln(\"Time is reversible\")\n}\n"))
 
 	return &FileSystem{
-		engine: engine,
-	}
+	engine: engine,
+	ready:  make(chan struct{}),
+}
+}
+
+func (fs *FileSystem) Init() {
+	close(fs.ready)
 }
 
 func (fs *FileSystem) Getattr(path string, stat *fuse.Stat_t, fh uint64) int {
@@ -195,7 +202,30 @@ func (fs *FileSystem) Readdir(
 	return 0
 }
 
-func Mount(mountPoint string) bool {
-	host := fuse.NewFileSystemHost(New())
+func (fs *FileSystem) Rewind(seconds int) int {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	target := time.Now().Add(-time.Duration(seconds) * time.Second)
+	fs.engine.Rewind(target)
+
+	return len(fs.engine.ListFiles())
+}
+
+func (fs *FileSystem) Events() []chronofsengine.Event {
+	return fs.engine.Events()
+}
+
+func Mount(mountPoint string, controls func(*FileSystem)) bool {
+	fileSystem := New()
+    
+	if controls != nil {
+	go func() {
+		<-fileSystem.ready
+		controls(fileSystem)
+	}()
+}
+
+	host := fuse.NewFileSystemHost(fileSystem)
 	return host.Mount("", []string{mountPoint})
 }

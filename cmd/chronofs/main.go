@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
-     chronofsfs "github.com/mujib77/chronofs/internal/fs"
 	"github.com/mujib77/chronofs/internal/engine"
+	chronofsfs "github.com/mujib77/chronofs/internal/fs"
 )
 
 func main() {
@@ -20,12 +23,12 @@ func main() {
 	case "demo":
 		runDemo()
 	case "mount":
-	if len(os.Args) != 3 {
-		fmt.Println("Usage: chronofs mount <drive-letter>")
-		return
-	}
+		if len(os.Args) != 3 {
+			fmt.Println("Usage: chronofs mount <drive-letter>")
+			return
+		}
 
-	mount(os.Args[2])
+		mount(os.Args[2])
 
 	default:
 		printUsage()
@@ -44,9 +47,10 @@ func printUsage() {
 func mount(mountPoint string) {
 	fmt.Printf("⏱  Mounting ChronoFS at %s\n", mountPoint)
 	fmt.Printf("Open File Explorer and go to %s\\\n", mountPoint)
-	fmt.Println("Press Ctrl+C here to unmount.")
+	fmt.Println("\nControls: rewind <seconds> | timeline | help")
+	fmt.Println("Press Ctrl+C to unmount.")
 
-	if !chronofsfs.Mount(mountPoint) {
+	if !chronofsfs.Mount(mountPoint, handleMountCommands) {
 		fmt.Println("ChronoFS could not mount. Ensure the drive letter is unused.")
 	}
 }
@@ -58,14 +62,14 @@ func runDemo() {
 	fmt.Println("\n[ t = 0s ] Creating production files...")
 
 	fs.WriteFile("app/server.go", []byte("package app"))
-    fs.WriteFile("assets/logo.svg", []byte("<svg>ChronoFS</svg>"))
-    fs.WriteFile("config/prod.env", []byte("ENV=production"))
+	fs.WriteFile("assets/logo.svg", []byte("<svg>ChronoFS</svg>"))
+	fs.WriteFile("config/prod.env", []byte("ENV=production"))
 
-  beforeDelete := time.Now()
+	beforeDelete := time.Now()
 
-      printFiles(fs)
-	  printTimeline(fs)
-    time.Sleep(800 * time.Millisecond)
+	printFiles(fs)
+	printTimeline(fs)
+	time.Sleep(800 * time.Millisecond)
 	fmt.Println("\n[ t = +0.8s ] $ rm -rf *")
 	for _, path := range []string{
 		"app/server.go",
@@ -127,5 +131,54 @@ func printTimeline(fs *engine.Engine) {
 			event.Type,
 			path,
 		)
+	}
+}
+
+func handleMountCommands(fs *chronofsfs.FileSystem) {
+	scanner := bufio.NewScanner(os.Stdin)
+
+	for scanner.Scan() {
+		parts := strings.Fields(scanner.Text())
+		if len(parts) == 0 {
+			continue
+		}
+
+		switch parts[0] {
+		case "rewind":
+			if len(parts) != 2 {
+				fmt.Println("Usage: rewind <seconds>")
+				continue
+			}
+
+			seconds, err := strconv.Atoi(parts[1])
+			if err != nil || seconds <= 0 {
+				fmt.Println("Seconds must be a positive whole number.")
+				continue
+			}
+
+			fileCount := fs.Rewind(seconds)
+			fmt.Printf("⏪ Rewound %d seconds — restored state has %d file(s).\n", seconds, fileCount)
+			fmt.Println("Refresh File Explorer with F5 to view the restored state.")
+
+		case "timeline":
+			fmt.Println("\n[ EVENT TIMELINE ]")
+			for _, event := range fs.Events() {
+				fmt.Printf(
+					"  %s  %-6s  %s\n",
+					event.Timestamp.Format("15:04:05.000000"),
+					event.Type,
+					event.Path,
+				)
+			}
+
+		case "help":
+			fmt.Println("Commands: rewind <seconds> | timeline | help")
+
+		default:
+			fmt.Println("Unknown command. Type help.")
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Mount console input error:", err)
 	}
 }
