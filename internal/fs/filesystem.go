@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"path"
 	"sort"
 	"sync"
 	"time"
@@ -43,6 +44,16 @@ func (fs *FileSystem) Getattr(path string, stat *fuse.Stat_t, fh uint64) int {
 		return 0
 	}
 
+	dirs := fs.engine.ListDirectories()
+	if createdAt, exists := dirs[path]; exists {
+		stat.Mode = fuse.S_IFDIR | 0777
+		stat.Nlink = 1
+		stat.Mtim = fuse.NewTimespec(createdAt)
+		stat.Ctim = fuse.NewTimespec(createdAt)
+		stat.Birthtim = fuse.NewTimespec(createdAt)
+		return 0
+	}
+
 	files := fs.engine.ListFiles()
 	file, exists := files[path]
 	if !exists {
@@ -59,15 +70,47 @@ func (fs *FileSystem) Getattr(path string, stat *fuse.Stat_t, fh uint64) int {
 	return 0
 }
 
-func (fs *FileSystem) Create(path string, flags int, mode uint32) (int, uint64) {
+func (fs *FileSystem) Create(filePath string, flags int, mode uint32) (int, uint64) {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
-	if _, exists := fs.engine.ReadFile(path); !exists {
-		fs.engine.WriteFile(path, []byte{})
+	dirs := fs.engine.ListDirectories()
+	if _, exists := dirs[path.Dir(filePath)]; !exists {
+		return -fuse.ENOENT, ^uint64(0)
+	}
+
+	if _, exists := fs.engine.ReadFile(filePath); !exists {
+		fs.engine.WriteFile(filePath, []byte{})
 	}
 
 	return 0, 0
+}
+
+func (fs *FileSystem) Mkdir(dirPath string, mode uint32) int {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	dirs := fs.engine.ListDirectories()
+	if _, exists := dirs[path.Dir(dirPath)]; !exists {
+		return -fuse.ENOENT
+	}
+
+	if err := fs.engine.MakeDir(dirPath); err != nil {
+		return -fuse.EEXIST
+	}
+
+	return 0
+}
+
+func (fs *FileSystem) Rmdir(dirPath string) int {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	if err := fs.engine.RemoveDir(dirPath); err != nil {
+		return -fuse.ENOTEMPTY
+	}
+
+	return 0
 }
 
 func (fs *FileSystem) Open(path string, flags int) (int, uint64) {
@@ -167,33 +210,48 @@ func (fs *FileSystem) Rename(oldPath, newPath string) int {
 }
 
 func (fs *FileSystem) Readdir(
-	path string,
+	dirPath string,
 	fill func(name string, stat *fuse.Stat_t, ofst int64) bool,
 	ofst int64,
 	fh uint64,
 ) int {
-	if path != "/" {
-		return -fuse.ENOENT
-	}
-
 	fs.mu.RLock()
 	defer fs.mu.RUnlock()
+
+	dirs := fs.engine.ListDirectories()
+	if _, exists := dirs[dirPath]; !exists {
+		return -fuse.ENOENT
+	}
 
 	fill(".", nil, 0)
 	fill("..", nil, 0)
 
-	files := fs.engine.ListFiles()
-	paths := make([]string, 0, len(files))
+	entries := make(map[string]bool)
 
-	for filePath := range files {
-		paths = append(paths, filePath)
+	for folderPath := range dirs {
+		if folderPath == dirPath {
+			continue
+		}
+
+		if path.Dir(folderPath) == dirPath {
+			entries[path.Base(folderPath)] = true
+		}
 	}
 
-	sort.Strings(paths)
+	for filePath := range fs.engine.ListFiles() {
+		if path.Dir(filePath) == dirPath {
+			entries[path.Base(filePath)] = true
+		}
+	}
 
-	for _, filePath := range paths {
-		name := filePath[1:]
+	names := make([]string, 0, len(entries))
+	for name := range entries {
+		names = append(names, name)
+	}
 
+	sort.Strings(names)
+
+	for _, name := range names {
 		if !fill(name, nil, 0) {
 			break
 		}
