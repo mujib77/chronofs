@@ -15,6 +15,7 @@ type FileSystem struct {
 	mu     sync.RWMutex
 	engine *chronofsengine.Engine
 	ready  chan struct{}
+	host   *fuse.FileSystemHost
 }
 
 func New() *FileSystem {
@@ -262,27 +263,55 @@ func (fs *FileSystem) Readdir(
 
 func (fs *FileSystem) Rewind(seconds int) int {
 	fs.mu.Lock()
-	defer fs.mu.Unlock()
 
 	target := time.Now().Add(-time.Duration(seconds) * time.Second)
 	fs.engine.Rewind(target)
+	fileCount := len(fs.engine.ListFiles())
 
-	return len(fs.engine.ListFiles())
+	fs.mu.Unlock()
+
+	fs.notifyRestoredState()
+	return fileCount
 }
 
 func (fs *FileSystem) Undo() (int, bool) {
 	fs.mu.Lock()
-	defer fs.mu.Unlock()
 
 	if !fs.engine.RewindSteps(1) {
+		fs.mu.Unlock()
 		return 0, false
 	}
 
-	return len(fs.engine.ListFiles()), true
+	fileCount := len(fs.engine.ListFiles())
+
+	fs.mu.Unlock()
+
+	fs.notifyRestoredState()
+	return fileCount, true
 }
 
 func (fs *FileSystem) Events() []chronofsengine.Event {
 	return fs.engine.Events()
+}
+
+func (fs *FileSystem) notifyRestoredState() {
+	fs.mu.RLock()
+	host := fs.host
+	fs.mu.RUnlock()
+
+	if host == nil {
+		return
+	}
+
+	for dirPath := range fs.engine.ListDirectories() {
+		if dirPath != "/" {
+			host.Notify(dirPath, fuse.NOTIFY_MKDIR)
+		}
+	}
+
+	for filePath := range fs.engine.ListFiles() {
+		host.Notify(filePath, fuse.NOTIFY_CREATE)
+	}
 }
 
 func Mount(mountPoint string, controls func(*FileSystem)) bool {
@@ -296,5 +325,8 @@ func Mount(mountPoint string, controls func(*FileSystem)) bool {
 	}
 
 	host := fuse.NewFileSystemHost(fileSystem)
+	fileSystem.host = host
+
 	return host.Mount("", []string{mountPoint})
+
 }
