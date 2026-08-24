@@ -55,3 +55,25 @@ func TestRewindStepsRestoresMostRecentState(t *testing.T) {
 		t.Fatalf("unexpected content: %q", content)
 	}
 }
+
+func TestRewindRestoresDeletedDirectory(t *testing.T) {
+	fs := New()
+
+	if err := fs.MakeDir("/assets"); err != nil {
+		t.Fatal(err)
+	}
+
+	beforeDelete := time.Now()
+
+	time.Sleep(time.Millisecond)
+
+	if err := fs.RemoveDir("/assets"); err != nil {
+		t.Fatal(err)
+	}
+
+	fs.Rewind(beforeDelete)
+
+	if _, exists := fs.ListDirectories()["/assets"]; !exists {
+		t.Fatal("expected rewind to restore deleted directory")
+	}
+}
