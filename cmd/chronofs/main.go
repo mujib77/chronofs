@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+     chronofsfs "github.com/mujib77/chronofs/internal/fs"
 	"github.com/mujib77/chronofs/internal/engine"
 )
 
@@ -18,6 +19,14 @@ func main() {
 	switch os.Args[1] {
 	case "demo":
 		runDemo()
+	case "mount":
+	if len(os.Args) != 3 {
+		fmt.Println("Usage: chronofs mount <drive-letter>")
+		return
+	}
+
+	mount(os.Args[2])
+
 	default:
 		printUsage()
 	}
@@ -30,6 +39,16 @@ func printUsage() {
 	fmt.Println("  chronofs demo")
 	fmt.Println("  chronofs mount <directory>       (coming soon)")
 	fmt.Println("  chronofs rewind --seconds <n>    (coming soon)")
+}
+
+func mount(mountPoint string) {
+	fmt.Printf("⏱  Mounting ChronoFS at %s\n", mountPoint)
+	fmt.Printf("Open File Explorer and go to %s\\\n", mountPoint)
+	fmt.Println("Press Ctrl+C here to unmount.")
+
+	if !chronofsfs.Mount(mountPoint) {
+		fmt.Println("ChronoFS could not mount. Ensure the drive letter is unused.")
+	}
 }
 
 func runDemo() {
