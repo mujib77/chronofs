@@ -45,6 +45,7 @@ func runDemo() {
   beforeDelete := time.Now()
 
       printFiles(fs)
+	  printTimeline(fs)
     time.Sleep(800 * time.Millisecond)
 	fmt.Println("\n[ t = +0.8s ] $ rm -rf *")
 	for _, path := range []string{
@@ -89,5 +90,23 @@ func printFiles(fs *engine.Engine) {
 
 	for _, path := range paths {
 		fmt.Printf("   ✓ %s\n", path)
+	}
+}
+func printTimeline(fs *engine.Engine) {
+	fmt.Println("\n[ EVENT TIMELINE ]")
+
+	for _, event := range fs.Events() {
+		path := event.Path
+
+		if event.Type == engine.EventRename {
+			path = event.OldPath + " → " + event.Path
+		}
+
+		fmt.Printf(
+			"  %s  %-6s  %s\n",
+			event.Timestamp.Format("15:04:05.000000"),
+			event.Type,
+			path,
+		)
 	}
 }
