@@ -24,9 +24,9 @@ func New() *FileSystem {
 	engine.WriteFile("/demo.go", []byte("package main\n\nfunc main() {\n\tprintln(\"Time is reversible\")\n}\n"))
 
 	return &FileSystem{
-	engine: engine,
-	ready:  make(chan struct{}),
-}
+		engine: engine,
+		ready:  make(chan struct{}),
+	}
 }
 
 func (fs *FileSystem) Init() {
@@ -212,19 +212,30 @@ func (fs *FileSystem) Rewind(seconds int) int {
 	return len(fs.engine.ListFiles())
 }
 
+func (fs *FileSystem) Undo() (int, bool) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	if !fs.engine.RewindSteps(1) {
+		return 0, false
+	}
+
+	return len(fs.engine.ListFiles()), true
+}
+
 func (fs *FileSystem) Events() []chronofsengine.Event {
 	return fs.engine.Events()
 }
 
 func Mount(mountPoint string, controls func(*FileSystem)) bool {
 	fileSystem := New()
-    
+
 	if controls != nil {
-	go func() {
-		<-fileSystem.ready
-		controls(fileSystem)
-	}()
-}
+		go func() {
+			<-fileSystem.ready
+			controls(fileSystem)
+		}()
+	}
 
 	host := fuse.NewFileSystemHost(fileSystem)
 	return host.Mount("", []string{mountPoint})

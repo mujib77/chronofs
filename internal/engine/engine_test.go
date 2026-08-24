@@ -32,3 +32,26 @@ func TestRewindRestoresDeletedFile(t *testing.T) {
 		t.Fatalf("unexpected restored content: %q", content)
 	}
 }
+
+func TestRewindStepsRestoresMostRecentState(t *testing.T) {
+	fs := New()
+
+	fs.WriteFile("incident.txt", []byte("recover me"))
+
+	if err := fs.DeleteFile("incident.txt"); err != nil {
+		t.Fatal(err)
+	}
+
+	if !fs.RewindSteps(1) {
+		t.Fatal("expected one-step rewind to succeed")
+	}
+
+	content, exists := fs.ReadFile("incident.txt")
+	if !exists {
+		t.Fatal("expected deleted file to be restored")
+	}
+
+	if string(content) != "recover me" {
+		t.Fatalf("unexpected content: %q", content)
+	}
+}

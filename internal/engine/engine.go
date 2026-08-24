@@ -149,6 +149,20 @@ func (e *Engine) Rewind(target time.Time) {
 
 	e.files = cloneFiles(selected.Files)
 }
+
+func (e *Engine) RewindSteps(steps int) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if steps < 1 || len(e.snapshots) <= steps {
+		return false
+	}
+
+	selected := e.snapshots[len(e.snapshots)-1-steps]
+	e.files = cloneFiles(selected.Files)
+
+	return true
+}
 func (e *Engine) saveSnapshot(timestamp time.Time) {
 	e.snapshots = append(e.snapshots, snapshot{
 		Timestamp: timestamp,
