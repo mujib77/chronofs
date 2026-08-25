@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/mujib77/chronofs/internal/engine"
 	chronofsfs "github.com/mujib77/chronofs/internal/fs"
+	"golang.org/x/term"
 )
 
 func main() {
@@ -47,7 +49,7 @@ func printUsage() {
 func mount(mountPoint string) {
 	fmt.Printf("⏱  Mounting ChronoFS at %s\n", mountPoint)
 	fmt.Printf("Open File Explorer and go to %s\\\n", mountPoint)
-	fmt.Println("\nControls: undo | redo | rewind <seconds> | timeline | help")
+	fmt.Println("\nControls: scrub | undo | redo | rewind <seconds> | timeline | help")
 	fmt.Println("Press Ctrl+C to unmount.")
 
 	if !chronofsfs.Mount(mountPoint, handleMountCommands) {
@@ -144,6 +146,9 @@ func handleMountCommands(fs *chronofsfs.FileSystem) {
 		}
 
 		switch parts[0] {
+		case "scrub":
+			runScrubber(fs)
+
 		case "undo":
 			fileCount, restored := fs.Undo()
 
@@ -193,7 +198,7 @@ func handleMountCommands(fs *chronofsfs.FileSystem) {
 			}
 
 		case "help":
-			fmt.Println("Commands: undo | redo | rewind <seconds> | timeline | help")
+			fmt.Println("Commands: scrub | undo | redo | rewind <seconds> | timeline | help")
 
 		default:
 			fmt.Println("Unknown command. Type help.")
@@ -202,4 +207,98 @@ func handleMountCommands(fs *chronofsfs.FileSystem) {
 	if err := scanner.Err(); err != nil {
 		fmt.Println("Mount console input error:", err)
 	}
+}
+
+func runScrubber(fs *chronofsfs.FileSystem) {
+	fd := int(os.Stdin.Fd())
+
+	if !term.IsTerminal(fd) {
+		fmt.Println("Scrubber requires an interactive terminal.")
+		return
+	}
+
+	oldState, err := term.MakeRaw(fd)
+	if err != nil {
+		fmt.Println("Could not activate scrubber:", err)
+		return
+	}
+	defer term.Restore(fd, oldState)
+
+	renderScrubber(fs)
+
+	for {
+		key := make([]byte, 1)
+
+		if _, err := os.Stdin.Read(key); err != nil {
+			return
+		}
+
+		switch key[0] {
+		case 'q', 'Q':
+			fmt.Print("\r\n")
+			return
+
+		case 'a', 'A':
+			fs.Undo()
+			renderScrubber(fs)
+
+		case 'd', 'D':
+			fs.Redo()
+			renderScrubber(fs)
+
+		case 27:
+			sequence := make([]byte, 2)
+
+			if _, err := io.ReadFull(os.Stdin, sequence); err != nil {
+				return
+			}
+
+			if sequence[0] != '[' {
+				continue
+			}
+
+			switch sequence[1] {
+			case 'D':
+				fs.Undo()
+				renderScrubber(fs)
+
+			case 'C':
+				fs.Redo()
+				renderScrubber(fs)
+			}
+		}
+	}
+}
+
+func renderScrubber(fs *chronofsfs.FileSystem) {
+	cursor, total := fs.TimelinePosition()
+
+	const width = 40
+	marker := 0
+
+	if total > 1 {
+		marker = cursor * (width - 1) / (total - 1)
+	}
+
+	var bar strings.Builder
+
+	for index := 0; index < width; index++ {
+		if index == marker {
+			bar.WriteString("●")
+		} else {
+			bar.WriteString("─")
+		}
+	}
+
+	fmt.Print("\033[2J\033[H")
+	fmt.Println("⏱  CHRONOFS — LIVE TIME SCRUBBER")
+	fmt.Println()
+	fmt.Printf("  Past  [%s]  Present\n", bar.String())
+	fmt.Printf("  Snapshot %d of %d\n", cursor+1, total)
+	fmt.Println()
+	fmt.Println("  ← / A  travel backward")
+	fmt.Println("  → / D  travel forward")
+	fmt.Println("  Q      exit scrubber")
+	fmt.Println()
+	fmt.Println("  Watch File Explorer reconstruct itself in real time.")
 }

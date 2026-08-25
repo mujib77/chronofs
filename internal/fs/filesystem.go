@@ -390,3 +390,7 @@ func Mount(mountPoint string, controls func(*FileSystem)) bool {
 	return host.Mount("", []string{mountPoint})
 
 }
+
+func (fs *FileSystem) TimelinePosition() (int, int) {
+	return fs.engine.TimelinePosition()
+}

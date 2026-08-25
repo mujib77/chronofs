@@ -304,3 +304,10 @@ func cloneDirectories(source map[string]time.Time) map[string]time.Time {
 
 	return result
 }
+
+func (e *Engine) TimelinePosition() (int, int) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	return e.cursor, len(e.snapshots)
+}
