@@ -21,9 +21,49 @@ type FileSystem struct {
 func New() *FileSystem {
 	engine := chronofsengine.New()
 
-	engine.WriteFile("/README.md", []byte("# ChronoFS\n\nThis file exists inside a time-scrubbable filesystem.\n"))
-	engine.WriteFile("/status.txt", []byte("Timeline recording is active.\n"))
-	engine.WriteFile("/demo.go", []byte("package main\n\nfunc main() {\n\tprintln(\"Time is reversible\")\n}\n"))
+	for _, dir := range []string{
+		"/src",
+		"/src/api",
+		"/assets",
+		"/assets/icons",
+		"/config",
+	} {
+		if err := engine.MakeDir(dir); err != nil {
+			panic(err)
+		}
+	}
+
+	for _, file := range []struct {
+		path    string
+		content string
+	}{
+		{
+			path:    "/README.md",
+			content: "# ChronoFS Production Demo\n\nDelete this project, then scrub time backward to reconstruct it.\n",
+		},
+		{
+			path:    "/src/main.go",
+			content: "package main\n\nfunc main() {\n\tprintln(\"ChronoFS is online\")\n}\n",
+		},
+		{
+			path:    "/src/api/server.go",
+			content: "package api\n\nconst Port = 8080\n",
+		},
+		{
+			path:    "/assets/logo.svg",
+			content: "<svg><!-- ChronoFS logo --></svg>\n",
+		},
+		{
+			path:    "/assets/icons/clock.txt",
+			content: "⏱ ChronoFS timeline icon\n",
+		},
+		{
+			path:    "/config/production.env",
+			content: "ENV=production\nREGION=ap-south-1\n",
+		},
+	} {
+		engine.WriteFile(file.path, []byte(file.content))
+	}
 
 	return &FileSystem{
 		engine: engine,
