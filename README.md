@@ -71,13 +71,31 @@ This is especially useful for:
 
 ## How it works
 
+```mermaid
+flowchart TD
+    A[Windows File Explorer] --> B[ChronoFS mounted drive X:]
+    B --> C[WinFsp + cgofuse]
+    C --> D[ChronoFS filesystem handlers]
+
+    D --> E[Write / Create / Rename / Delete]
+    E --> F[In-memory timeline snapshots]
+
+    G[Terminal scrubber] --> H[Timeline cursor]
+    H --> F
+    F --> I[Undo / Redo / Rewind]
+
+    I --> J[WinFsp change notifications]
+    J --> A
+```
+
+```text
 Windows File Explorer
         │
         ▼
-  WinFsp mounted drive
+WinFsp mounted drive
         │
         ▼
-  ChronoFS FUSE handlers
+ChronoFS FUSE handlers
         │
         ├── Create / write / truncate
         ├── Rename
@@ -85,16 +103,17 @@ Windows File Explorer
         └── Create / delete folders
         │
         ▼
- In-memory timeline snapshots
+In-memory timeline snapshots
         │
         ▼
- Timeline cursor ← → Explorer notifications
+Timeline cursor ↔ Explorer notifications
+```
 
+ChronoFS uses:
 
->ChronoFS uses:
 - Go for the filesystem and timeline engine.
 - WinFsp to mount the project as a native Windows drive.
-- cgofuse as the Go-to-WinFsp filesystem bridge.
+- gofuse as the Go-to-WinFsp filesystem bridge.
 - In-memory snapshots to preserve each filesystem state.
 - Windows change notifications so Explorer updates automatically when time moves.
 
