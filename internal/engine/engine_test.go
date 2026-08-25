@@ -77,3 +77,28 @@ func TestRewindRestoresDeletedDirectory(t *testing.T) {
 		t.Fatal("expected rewind to restore deleted directory")
 	}
 }
+
+func TestStepForwardRestoresNewerSnapshot(t *testing.T) {
+	fs := New()
+
+	fs.WriteFile("status.txt", []byte("before"))
+	fs.WriteFile("status.txt", []byte("after"))
+
+	if !fs.RewindSteps(1) {
+		t.Fatal("expected rewind to succeed")
+	}
+
+	content, _ := fs.ReadFile("status.txt")
+	if string(content) != "before" {
+		t.Fatalf("expected old content, got %q", content)
+	}
+
+	if !fs.StepForward(1) {
+		t.Fatal("expected step forward to succeed")
+	}
+
+	content, _ = fs.ReadFile("status.txt")
+	if string(content) != "after" {
+		t.Fatalf("expected newer content, got %q", content)
+	}
+}

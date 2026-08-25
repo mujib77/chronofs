@@ -41,6 +41,7 @@ type Engine struct {
 	dirs      map[string]time.Time
 	events    []Event
 	snapshots []snapshot
+	cursor    int
 }
 
 func New() *Engine {
@@ -218,40 +219,69 @@ func (e *Engine) Rewind(target time.Time) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	selected := e.snapshots[0]
-	for _, item := range e.snapshots {
+	selectedIndex := 0
+
+	for index, item := range e.snapshots {
 		if item.Timestamp.After(target) {
 			break
 		}
-		selected = item
+
+		selectedIndex = index
 	}
 
+	selected := e.snapshots[selectedIndex]
 	e.files = cloneFiles(selected.Files)
 	e.dirs = cloneDirectories(selected.Dirs)
+	e.cursor = selectedIndex
 }
 
 func (e *Engine) RewindSteps(steps int) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	if steps < 1 || len(e.snapshots) <= steps {
+	target := e.cursor - steps
+	if steps < 1 || target < 0 {
 		return false
 	}
 
-	selected := e.snapshots[len(e.snapshots)-1-steps]
+	selected := e.snapshots[target]
 	e.files = cloneFiles(selected.Files)
 	e.dirs = cloneDirectories(selected.Dirs)
+	e.cursor = target
+
+	return true
+}
+
+func (e *Engine) StepForward(steps int) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	target := e.cursor + steps
+	if steps < 1 || target >= len(e.snapshots) {
+		return false
+	}
+
+	selected := e.snapshots[target]
+	e.files = cloneFiles(selected.Files)
+	e.dirs = cloneDirectories(selected.Dirs)
+	e.cursor = target
 
 	return true
 }
 func (e *Engine) saveSnapshot(timestamp time.Time) {
+	if e.cursor < len(e.snapshots)-1 {
+		e.snapshots = e.snapshots[:e.cursor+1]
+		e.events = e.events[:e.cursor]
+	}
+
 	e.snapshots = append(e.snapshots, snapshot{
 		Timestamp: timestamp,
 		Files:     cloneFiles(e.files),
 		Dirs:      cloneDirectories(e.dirs),
 	})
-}
 
+	e.cursor = len(e.snapshots) - 1
+}
 func cloneFiles(source map[string]File) map[string]File {
 	result := make(map[string]File, len(source))
 
