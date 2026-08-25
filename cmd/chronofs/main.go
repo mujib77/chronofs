@@ -47,7 +47,7 @@ func printUsage() {
 func mount(mountPoint string) {
 	fmt.Printf("⏱  Mounting ChronoFS at %s\n", mountPoint)
 	fmt.Printf("Open File Explorer and go to %s\\\n", mountPoint)
-	fmt.Println("\nControls: undo | rewind <seconds> | timeline | help")
+	fmt.Println("\nControls: undo | redo | rewind <seconds> | timeline | help")
 	fmt.Println("Press Ctrl+C to unmount.")
 
 	if !chronofsfs.Mount(mountPoint, handleMountCommands) {
@@ -155,6 +155,16 @@ func handleMountCommands(fs *chronofsfs.FileSystem) {
 			fmt.Printf("⏪ Undo complete — restored state has %d file(s).\n", fileCount)
 			fmt.Println("Refresh File Explorer with F5 to view the restored state.")
 
+		case "redo":
+			fileCount, advanced := fs.Redo()
+
+			if !advanced {
+				fmt.Println("Already at the newest moment in the timeline.")
+				continue
+			}
+
+			fmt.Printf("⏩ Redo complete — current state has %d file(s).\n", fileCount)
+
 		case "rewind":
 			if len(parts) != 2 {
 				fmt.Println("Usage: rewind <seconds>")
@@ -183,7 +193,7 @@ func handleMountCommands(fs *chronofsfs.FileSystem) {
 			}
 
 		case "help":
-			fmt.Println("Commands: undo | rewind <seconds> | timeline | help")
+			fmt.Println("Commands: undo | redo | rewind <seconds> | timeline | help")
 
 		default:
 			fmt.Println("Unknown command. Type help.")

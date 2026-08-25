@@ -264,29 +264,55 @@ func (fs *FileSystem) Readdir(
 func (fs *FileSystem) Rewind(seconds int) int {
 	fs.mu.Lock()
 
+	beforeFiles, beforeDirs := fs.timelineState()
+
 	target := time.Now().Add(-time.Duration(seconds) * time.Second)
 	fs.engine.Rewind(target)
-	fileCount := len(fs.engine.ListFiles())
+
+	afterFiles, afterDirs := fs.timelineState()
+	fileCount := len(afterFiles)
 
 	fs.mu.Unlock()
 
-	fs.notifyRestoredState()
+	fs.notifyTimelineChange(beforeFiles, beforeDirs, afterFiles, afterDirs)
 	return fileCount
 }
 
 func (fs *FileSystem) Undo() (int, bool) {
 	fs.mu.Lock()
 
+	beforeFiles, beforeDirs := fs.timelineState()
+
 	if !fs.engine.RewindSteps(1) {
 		fs.mu.Unlock()
 		return 0, false
 	}
 
-	fileCount := len(fs.engine.ListFiles())
+	afterFiles, afterDirs := fs.timelineState()
+	fileCount := len(afterFiles)
 
 	fs.mu.Unlock()
 
-	fs.notifyRestoredState()
+	fs.notifyTimelineChange(beforeFiles, beforeDirs, afterFiles, afterDirs)
+	return fileCount, true
+}
+
+func (fs *FileSystem) Redo() (int, bool) {
+	fs.mu.Lock()
+
+	beforeFiles, beforeDirs := fs.timelineState()
+
+	if !fs.engine.StepForward(1) {
+		fs.mu.Unlock()
+		return 0, false
+	}
+
+	afterFiles, afterDirs := fs.timelineState()
+	fileCount := len(afterFiles)
+
+	fs.mu.Unlock()
+
+	fs.notifyTimelineChange(beforeFiles, beforeDirs, afterFiles, afterDirs)
 	return fileCount, true
 }
 
@@ -294,7 +320,19 @@ func (fs *FileSystem) Events() []chronofsengine.Event {
 	return fs.engine.Events()
 }
 
-func (fs *FileSystem) notifyRestoredState() {
+func (fs *FileSystem) timelineState() (
+	map[string]chronofsengine.File,
+	map[string]time.Time,
+) {
+	return fs.engine.ListFiles(), fs.engine.ListDirectories()
+}
+
+func (fs *FileSystem) notifyTimelineChange(
+	beforeFiles map[string]chronofsengine.File,
+	beforeDirs map[string]time.Time,
+	afterFiles map[string]chronofsengine.File,
+	afterDirs map[string]time.Time,
+) {
 	fs.mu.RLock()
 	host := fs.host
 	fs.mu.RUnlock()
@@ -303,14 +341,36 @@ func (fs *FileSystem) notifyRestoredState() {
 		return
 	}
 
-	for dirPath := range fs.engine.ListDirectories() {
-		if dirPath != "/" {
+	for filePath := range beforeFiles {
+		if _, exists := afterFiles[filePath]; !exists {
+			host.Notify(filePath, fuse.NOTIFY_UNLINK)
+		}
+	}
+
+	for dirPath := range beforeDirs {
+		if dirPath == "/" {
+			continue
+		}
+
+		if _, exists := afterDirs[dirPath]; !exists {
+			host.Notify(dirPath, fuse.NOTIFY_RMDIR)
+		}
+	}
+
+	for dirPath := range afterDirs {
+		if dirPath == "/" {
+			continue
+		}
+
+		if _, existed := beforeDirs[dirPath]; !existed {
 			host.Notify(dirPath, fuse.NOTIFY_MKDIR)
 		}
 	}
 
-	for filePath := range fs.engine.ListFiles() {
-		host.Notify(filePath, fuse.NOTIFY_CREATE)
+	for filePath := range afterFiles {
+		if _, existed := beforeFiles[filePath]; !existed {
+			host.Notify(filePath, fuse.NOTIFY_CREATE)
+		}
 	}
 }
 
